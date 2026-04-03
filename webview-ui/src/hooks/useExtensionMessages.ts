@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { playDoneSound, setSoundEnabled } from '../notificationSound.js';
 import type { OfficeState } from '../office/engine/officeState.js';
@@ -10,6 +10,22 @@ import { extractToolName } from '../office/toolUtils.js';
 import type { OfficeLayout, ToolActivity } from '../office/types.js';
 import { setWallSprites } from '../office/wallTiles.js';
 import { vscode } from '../vscodeApi.js';
+
+export interface Sector {
+  id: string;
+  name: string;
+  color: string;
+  agentIds: number[];
+}
+
+export interface LogEntry {
+  id: number;
+  timestamp: Date;
+  agentId: number;
+  kind: 'created' | 'closed' | 'toolStart' | 'toolDone' | 'waiting' | 'active' | 'permission';
+  detail?: string;
+  toolName?: string;
+}
 
 export interface SubagentCharacter {
   id: number;
@@ -63,6 +79,10 @@ export interface ExtensionMessageState {
   watchAllSessions: boolean;
   setWatchAllSessions: (v: boolean) => void;
   alwaysShowLabels: boolean;
+  logEntries: LogEntry[];
+  clearLogEntries: () => void;
+  sectors: Sector[];
+  setSectors: (s: Sector[]) => void;
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -98,6 +118,23 @@ export function useExtensionMessages(
   const [extensionVersion, setExtensionVersion] = useState('');
   const [watchAllSessions, setWatchAllSessions] = useState(false);
   const [alwaysShowLabels, setAlwaysShowLabels] = useState(false);
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [sectors, setSectors] = useState<Sector[]>([]);
+
+  // Monotonic log ID counter
+  const logIdRef = useRef(0);
+  // Mirror of agentTools for synchronous toolName lookup in agentToolDone
+  const agentToolsRef = useRef<Record<number, { toolId: string; status: string }[]>>({});
+
+  const addLogEntry = useCallback((entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
+    const id = ++logIdRef.current;
+    setLogEntries((prev) => {
+      const next = [...prev, { ...entry, id, timestamp: new Date() }];
+      return next.length > 500 ? next.slice(next.length - 500) : next;
+    });
+  }, []);
+
+  const clearLogEntries = useCallback(() => setLogEntries([]), []);
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
@@ -151,9 +188,16 @@ export function useExtensionMessages(
         setSelectedAgent(id);
         os.addAgent(id, undefined, undefined, undefined, undefined, folderName);
         saveAgentSeats(os);
+        addLogEntry({ agentId: id, kind: 'created' });
       } else if (msg.type === 'agentClosed') {
         const id = msg.id as number;
         setAgents((prev) => prev.filter((a) => a !== id));
+        // Remove agent from sectors and persist
+        setSectors((prev) => {
+          const updated = prev.map((s) => ({ ...s, agentIds: s.agentIds.filter((a) => a !== id) }));
+          vscode.postMessage({ type: 'saveSectors', sectors: updated });
+          return updated;
+        });
         setSelectedAgent((prev) => (prev === id ? null : prev));
         setAgentTools((prev) => {
           if (!(id in prev)) return prev;
@@ -177,6 +221,7 @@ export function useExtensionMessages(
         os.removeAllSubagents(id);
         setSubagentCharacters((prev) => prev.filter((s) => s.parentAgentId !== id));
         os.removeAgent(id);
+        addLogEntry({ agentId: id, kind: 'closed' });
       } else if (msg.type === 'existingAgents') {
         const incoming = msg.agents as number[];
         const meta = (msg.agentMeta || {}) as Record<
@@ -212,9 +257,22 @@ export function useExtensionMessages(
         setAgentTools((prev) => {
           const list = prev[id] || [];
           if (list.some((t) => t.toolId === toolId)) return prev;
-          return { ...prev, [id]: [...list, { toolId, status, done: false }] };
+          const next = { ...prev, [id]: [...list, { toolId, status, done: false }] };
+          agentToolsRef.current = Object.fromEntries(
+            Object.entries(next).map(([k, v]) => [
+              k,
+              v.map((t) => ({ toolId: t.toolId, status: t.status })),
+            ]),
+          );
+          return next;
         });
         const toolName = (msg.toolName as string | undefined) ?? extractToolName(status);
+        addLogEntry({
+          agentId: id,
+          kind: 'toolStart',
+          toolName: toolName ?? undefined,
+          detail: status,
+        });
         os.setAgentTool(id, toolName);
         os.setAgentActive(id, true);
         os.clearPermissionBubble(id);
@@ -230,6 +288,11 @@ export function useExtensionMessages(
       } else if (msg.type === 'agentToolDone') {
         const id = msg.id as number;
         const toolId = msg.toolId as string;
+        // Look up tool name before state update
+        const doneToolEntry = agentToolsRef.current[id]?.find((t) => t.toolId === toolId);
+        const doneToolName = doneToolEntry
+          ? (extractToolName(doneToolEntry.status) ?? undefined)
+          : undefined;
         setAgentTools((prev) => {
           const list = prev[id];
           if (!list) return prev;
@@ -238,6 +301,7 @@ export function useExtensionMessages(
             [id]: list.map((t) => (t.toolId === toolId ? { ...t, done: true } : t)),
           };
         });
+        addLogEntry({ agentId: id, kind: 'toolDone', toolName: doneToolName });
       } else if (msg.type === 'agentToolsClear') {
         const id = msg.id as number;
         setAgentTools((prev) => {
@@ -276,9 +340,17 @@ export function useExtensionMessages(
         if (status === 'waiting') {
           os.showWaitingBubble(id);
           playDoneSound();
+          addLogEntry({ agentId: id, kind: 'waiting' });
+        } else if (status === 'active') {
+          addLogEntry({ agentId: id, kind: 'active' });
         }
+      } else if (msg.type === 'sectorsLoaded') {
+        setSectors(msg.sectors as Sector[]);
+      } else if (msg.type === 'sectorsUpdated') {
+        setSectors(msg.sectors as Sector[]);
       } else if (msg.type === 'agentToolPermission') {
         const id = msg.id as number;
+        addLogEntry({ agentId: id, kind: 'permission' });
         setAgentTools((prev) => {
           const list = prev[id];
           if (!list) return prev;
@@ -449,5 +521,9 @@ export function useExtensionMessages(
     watchAllSessions,
     setWatchAllSessions,
     alwaysShowLabels,
+    logEntries,
+    clearLogEntries,
+    sectors,
+    setSectors,
   };
 }

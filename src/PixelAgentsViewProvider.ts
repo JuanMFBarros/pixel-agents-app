@@ -44,7 +44,8 @@ import {
 } from './fileWatcher.js';
 import type { LayoutWatcher } from './layoutPersistence.js';
 import { readLayoutFromFile, watchLayoutFile, writeLayoutToFile } from './layoutPersistence.js';
-import type { AgentState } from './types.js';
+import { readSectors, writeSectors } from './sectorPersistence.js';
+import type { AgentState, Sector } from './types.js';
 
 export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
   nextAgentId = { current: 1 };
@@ -80,6 +81,9 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 
   // Cross-window layout sync
   layoutWatcher: LayoutWatcher | null = null;
+
+  // Company sectors
+  sectors: Sector[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -149,6 +153,10 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
             webviewView.webview.postMessage({ type: 'agentClosed', id: message.id });
           }
         }
+      } else if (message.type === 'saveSectors') {
+        const sectors = message.sectors as Sector[];
+        this.sectors = sectors;
+        writeSectors(sectors);
       } else if (message.type === 'saveAgentSeats') {
         // Store seat assignments in a separate key (never touched by persistAgents)
         console.log(`[Pixel Agents] saveAgentSeats:`, JSON.stringify(message.seats));
@@ -249,6 +257,10 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
           alwaysShowLabels,
           externalAssetDirectories: config.externalAssetDirectories,
         });
+
+        // Send persisted sectors to webview
+        this.sectors = readSectors();
+        this.webview?.postMessage({ type: 'sectorsLoaded', sectors: this.sectors });
 
         // Send workspace folders to webview (only when multi-root)
         const wsFolders = vscode.workspace.workspaceFolders;

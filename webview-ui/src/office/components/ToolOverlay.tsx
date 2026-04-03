@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { CHARACTER_SITTING_OFFSET_PX, TOOL_OVERLAY_VERTICAL_OFFSET } from '../../constants.js';
-import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
+import type { Sector, SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import type { OfficeState } from '../engine/officeState.js';
 import type { ToolActivity } from '../types.js';
 import { CharacterState, TILE_SIZE } from '../types.js';
@@ -16,6 +16,7 @@ interface ToolOverlayProps {
   panRef: React.RefObject<{ x: number; y: number }>;
   onCloseAgent: (id: number) => void;
   alwaysShowOverlay: boolean;
+  sectors: Sector[];
 }
 
 /** Derive a short human-readable activity string from tools/status */
@@ -52,6 +53,7 @@ export function ToolOverlay({
   panRef,
   onCloseAgent,
   alwaysShowOverlay,
+  sectors,
 }: ToolOverlayProps) {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -128,6 +130,8 @@ export function ToolOverlay({
           dotColor = 'var(--pixel-status-active)';
         }
 
+        const agentSector = !isSub ? sectors.find((s) => s.agentIds.includes(id)) : undefined;
+
         return (
           <div
             key={id}
@@ -158,6 +162,11 @@ export function ToolOverlay({
                 boxShadow: 'var(--pixel-shadow)',
                 whiteSpace: 'nowrap',
                 maxWidth: 220,
+                borderBottom: agentSector
+                  ? `3px solid ${agentSector.color}`
+                  : isSelected
+                    ? '2px solid var(--pixel-border-light)'
+                    : '2px solid var(--pixel-border)',
               }}
             >
               {dotColor && (

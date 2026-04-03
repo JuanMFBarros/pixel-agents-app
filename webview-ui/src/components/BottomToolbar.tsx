@@ -16,6 +16,10 @@ interface BottomToolbarProps {
   externalAssetDirectories: string[];
   watchAllSessions: boolean;
   onToggleWatchAllSessions: () => void;
+  isLogsMode: boolean;
+  onToggleLogsMode: () => void;
+  isSectorsPanelOpen: boolean;
+  onToggleSectorsPanel: () => void;
 }
 
 const panelStyle: React.CSSProperties = {
@@ -61,6 +65,10 @@ export function BottomToolbar({
   externalAssetDirectories,
   watchAllSessions,
   onToggleWatchAllSessions,
+  isLogsMode,
+  onToggleLogsMode,
+  isSectorsPanelOpen,
+  onToggleSectorsPanel,
 }: BottomToolbarProps) {
   const [hovered, setHovered] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -254,6 +262,39 @@ export function BottomToolbar({
         title="Edit office layout"
       >
         Layout
+      </button>
+      <button
+        onClick={onToggleLogsMode}
+        onMouseEnter={() => setHovered('logs')}
+        onMouseLeave={() => setHovered(null)}
+        style={
+          isLogsMode
+            ? { ...btnActive }
+            : {
+                ...btnBase,
+                background: hovered === 'logs' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
+              }
+        }
+        title="Activity logs"
+      >
+        Logs
+      </button>
+      <button
+        onClick={onToggleSectorsPanel}
+        onMouseEnter={() => setHovered('sectors')}
+        onMouseLeave={() => setHovered(null)}
+        style={
+          isSectorsPanelOpen
+            ? { ...btnActive }
+            : {
+                ...btnBase,
+                background:
+                  hovered === 'sectors' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
+              }
+        }
+        title="Company sectors"
+      >
+        Setores
       </button>
       <div style={{ position: 'relative' }}>
         <button

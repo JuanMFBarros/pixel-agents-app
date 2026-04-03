@@ -4,6 +4,8 @@ import { toMajorMinor } from './changelogData.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { DebugView } from './components/DebugView.js';
+import { LogsView } from './components/LogsView.js';
+import { SectorsPanel } from './components/SectorsPanel.js';
 import { VersionIndicator } from './components/VersionIndicator.js';
 import { ZoomControls } from './components/ZoomControls.js';
 import { PULSE_ANIMATION_DURATION_SEC } from './constants.js';
@@ -156,6 +158,10 @@ function App() {
     watchAllSessions,
     setWatchAllSessions,
     alwaysShowLabels,
+    logEntries,
+    clearLogEntries,
+    sectors,
+    setSectors,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   // Show migration notice once layout reset is detected
@@ -164,6 +170,8 @@ function App() {
 
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [isDebugMode, setIsDebugMode] = useState(false);
+  const [isLogsMode, setIsLogsMode] = useState(false);
+  const [isSectorsPanelOpen, setIsSectorsPanelOpen] = useState(false);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
 
   const currentMajorMinor = toMajorMinor(extensionVersion);
@@ -182,7 +190,25 @@ function App() {
     setAlwaysShowOverlay(alwaysShowLabels);
   }, [alwaysShowLabels]);
 
-  const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), []);
+  const handleToggleDebugMode = useCallback(() => {
+    setIsDebugMode((prev) => !prev);
+    setIsLogsMode(false);
+  }, []);
+
+  const handleToggleLogsMode = useCallback(() => {
+    setIsLogsMode((prev) => !prev);
+    setIsDebugMode(false);
+  }, []);
+
+  const handleToggleSectorsPanel = useCallback(() => setIsSectorsPanelOpen((prev) => !prev), []);
+
+  const handleSectorsChange = useCallback(
+    (updated: Parameters<typeof setSectors>[0]) => {
+      setSectors(updated);
+      vscode.postMessage({ type: 'saveSectors', sectors: updated });
+    },
+    [setSectors],
+  );
   const handleToggleAlwaysShowOverlay = useCallback(() => {
     setAlwaysShowOverlay((prev) => {
       const newVal = !prev;
@@ -323,6 +349,10 @@ function App() {
           setWatchAllSessions(newVal);
           vscode.postMessage({ type: 'setWatchAllSessions', enabled: newVal });
         }}
+        isLogsMode={isLogsMode}
+        onToggleLogsMode={handleToggleLogsMode}
+        isSectorsPanelOpen={isSectorsPanelOpen}
+        onToggleSectorsPanel={handleToggleSectorsPanel}
       />
 
       <VersionIndicator
@@ -405,6 +435,7 @@ function App() {
           panRef={editor.panRef}
           onCloseAgent={handleCloseAgent}
           alwaysShowOverlay={alwaysShowOverlay}
+          sectors={sectors}
         />
       )}
 
@@ -418,6 +449,16 @@ function App() {
           onSelectAgent={handleSelectAgent}
         />
       )}
+
+      {isLogsMode && <LogsView logEntries={logEntries} onClear={clearLogEntries} />}
+
+      <SectorsPanel
+        isOpen={isSectorsPanelOpen}
+        onClose={() => setIsSectorsPanelOpen(false)}
+        sectors={sectors}
+        agents={agents}
+        onChange={handleSectorsChange}
+      />
 
       {showMigrationNotice && (
         <div

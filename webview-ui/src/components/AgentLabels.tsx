@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import type { SubagentCharacter } from '../hooks/useExtensionMessages.js';
+import type { Sector, SubagentCharacter } from '../hooks/useExtensionMessages.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { CharacterState, TILE_SIZE } from '../office/types.js';
 
@@ -12,6 +12,7 @@ interface AgentLabelsProps {
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
   subagentCharacters: SubagentCharacter[];
+  sectors: Sector[];
 }
 
 export function AgentLabels({
@@ -22,6 +23,7 @@ export function AgentLabels({
   zoom,
   panRef,
   subagentCharacters,
+  sectors,
 }: AgentLabelsProps) {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -80,6 +82,7 @@ export function AgentLabels({
         }
 
         const labelText = subLabelMap.get(id) || `Agent #${id}`;
+        const agentSector = !isSub ? sectors.find((s) => s.agentIds.includes(id)) : undefined;
 
         return (
           <div
@@ -120,6 +123,7 @@ export function AgentLabels({
                 maxWidth: isSub ? 120 : undefined,
                 overflow: isSub ? 'hidden' : undefined,
                 textOverflow: isSub ? 'ellipsis' : undefined,
+                borderBottom: agentSector ? `2px solid ${agentSector.color}` : undefined,
               }}
             >
               {labelText}

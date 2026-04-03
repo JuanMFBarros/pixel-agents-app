@@ -29,6 +29,13 @@ export interface AgentState {
   seenUnknownRecordTypes: Set<string>;
 }
 
+export interface Sector {
+  id: string;
+  name: string;
+  color: string;
+  agentIds: number[];
+}
+
 export interface PersistedAgent {
   id: number;
   /** Terminal name — empty string for extension panel sessions */
